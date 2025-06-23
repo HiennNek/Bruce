@@ -6,6 +6,8 @@
  * @date 2024-08-13
  */
 
+// RFID 125KHz emulation emplemented by @HiennNek
+
 #include "rfid125.h"
 #include "core/display.h"
 #include "core/mykeyboard.h"
@@ -44,9 +46,7 @@ void RFID125::loop() {
 
         switch (_current_state) {
             case READ_MODE: read_card(); break;
-            // case LOAD_MODE:
-            //     load_file();
-            //     break;
+            case LOAD_MODE: load_file(); break;
             // case CLONE_MODE:
             //     clone_card();
             //     break;
@@ -72,7 +72,7 @@ void RFID125::select_state() {
         options.push_back({"Save file", [=]() { set_state(SAVE_MODE); }});
     }
     options.push_back({"Read tag", [=]() { set_state(READ_MODE); }});
-    // options.push_back({"Load file",  [=]() { set_state(LOAD_MODE); }});
+    options.push_back({"Load file", [=]() { set_state(LOAD_MODE); }});
     // options.push_back({"Write NDEF", [=]() { set_state(WRITE_NDEF_MODE); }});
     // options.push_back({"Erase tag",  [=]() { set_state(ERASE_MODE); }});
     loopOptions(options);
@@ -82,10 +82,8 @@ void RFID125::set_state(RFID125_State state) {
     _current_state = state;
     display_banner();
     switch (state) {
-        case READ_MODE:
-            // case LOAD_MODE:
-            _tag_read = false;
-            break;
+        case READ_MODE: _tag_read = false; break;
+        case LOAD_MODE: _tag_read = false; break;
         // case CLONE_MODE:
         //     padprintln("New UID: " + printableUID.uid);
         //     padprintln("SAK: " + printableUID.sak);
@@ -123,10 +121,10 @@ void RFID125::display_banner() {
             padprintln("             READ MODE");
             padprintln("             ---------");
             break;
-        // case LOAD_MODE:
-        //     padprintln("             LOAD MODE");
-        //     padprintln("             ---------");
-        //     break;
+        case LOAD_MODE:
+            padprintln("             LOAD MODE");
+            padprintln("             ---------");
+            break;
         // case CLONE_MODE:
         //     padprintln("            CLONE MODE");
         //     padprintln("            ----------");
@@ -275,4 +273,129 @@ void RFID125::format_data() {
     _printable_checksum += String(_tag_data[RFID125_PACKET_SIZE - 2]);
     _printable_checksum.trim();
     _printable_checksum.toUpperCase();
+}
+
+void RFID125::load_file() {
+    display_banner();
+
+    String filepath;
+    File file;
+    FS *fs;
+
+    if (!getFsStorage(fs)) {
+        displayError("Error accessing storage");
+        delay(1000);
+        set_state(READ_MODE);
+        return;
+    }
+
+    if (!(*fs).exists("/BruceRFID")) (*fs).mkdir("/BruceRFID");
+    filepath = loopSD(*fs, true, "RFIDLF", "/BruceRFID");
+    file = fs->open(filepath, FILE_READ);
+
+    if (!file) {
+        displayError("Error opening file");
+        delay(1000);
+        set_state(READ_MODE);
+        return;
+    }
+
+    String line;
+    String strData;
+    _printable_data = "";
+
+    while (file.available()) {
+        line = file.readStringUntil('\n');
+        strData = line.substring(line.indexOf(":") + 1);
+        strData.trim();
+        if (line.startsWith("ASCII:")) _printable_data = strData;
+    }
+
+    file.close();
+    delay(100);
+
+    if (_printable_data == "") {
+        displayError("Invalid file format");
+        delay(1000);
+        set_state(READ_MODE);
+        return;
+    }
+
+    displaySuccess("File loaded");
+    delay(1000);
+    _tag_read = true;
+
+    options = {
+        {"Emulate tag", [=]() { emulate_tag(); }},
+    };
+
+    loopOptions(options);
+    set_state(READ_MODE);
+}
+
+void RFID125::emulate_tag() { // @HiennNek
+    display_banner();
+    padprintln("Emulating tag: " + _printable_data);
+    padprintln("");
+    padprintln("Press [ESC] to stop");
+
+    // Convert card ID and vendor to bytes
+    String hex_str = _printable_data;
+    hex_str.replace(" ", "");
+    uint8_t tag_bytes[5];
+    for (int i = 0; i < 5; i++) {
+        tag_bytes[i] = strtol(hex_str.substring(i * 2, i * 2 + 2).c_str(), NULL, 16);
+    }
+
+    // Since the RDM6300 doesnt use RX pin, we can use it for emulation
+    pinMode(RFID125_RX_PIN, OUTPUT);
+    digitalWrite(RFID125_RX_PIN, LOW);
+
+    // Code borrowed from Crypter/ESP-RFID
+    while (!check(EscPress)) {
+        // Some math stuff -_-
+
+        uint8_t data[64];
+        uint8_t value[10];
+
+        // Convert vendor and ID to nibbles
+        value[0] = (tag_bytes[0] >> 4) & 0xF;
+        value[1] = tag_bytes[0] & 0xF;
+
+        uint32_t ID = (tag_bytes[1] << 24) | (tag_bytes[2] << 16) | (tag_bytes[3] << 8) | tag_bytes[4];
+        for (int i = 1; i < 8; i++) { value[i + 2] = (ID >> (28 - i * 4)) & 0xF; }
+
+        // Data frame
+        for (int i = 0; i < 9; i++) data[i] = 1; // Header
+
+        for (int i = 0; i < 10; i++) { // Data + parity
+            for (int j = 0; j < 4; j++) { data[9 + i * 5 + j] = value[i] >> (3 - j) & 1; }
+            // Calculate parity bit
+            data[9 + i * 5 + 4] =
+                (data[9 + i * 5 + 0] + data[9 + i * 5 + 1] + data[9 + i * 5 + 2] + data[9 + i * 5 + 3]) % 2;
+        }
+
+        // Checksum
+        for (int i = 0; i < 4; i++) {
+            int checksum = 0;
+            for (int j = 0; j < 10; j++) { checksum += data[9 + i + j * 5]; }
+            data[i + 59] = checksum % 2;
+        }
+        data[63] = 0; // Footer
+
+        // This is called manchester encoding :D
+        for (int i = 0; i < 15; i++) { // Repeat signal
+            for (int j = 0; j < 64; j++) {
+                digitalWrite(RFID125_RX_PIN, data[j] ? HIGH : LOW);
+                delayMicroseconds(255);
+                digitalWrite(RFID125_RX_PIN, data[j] ? LOW : HIGH);
+                delayMicroseconds(255);
+            }
+        }
+        delay(10);
+    }
+
+    digitalWrite(RFID125_RX_PIN, LOW);
+    displayInfo("Emulation stopped");
+    delay(1000);
 }
