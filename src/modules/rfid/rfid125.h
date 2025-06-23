@@ -27,7 +27,7 @@ public:
         // WRITE_MODE,
         // WRITE_NDEF_MODE,
         // ERASE_MODE,
-        // LOAD_MODE,
+        LOAD_MODE,
         SAVE_MODE,
     };
 
@@ -74,9 +74,10 @@ private:
     // void erase_card();
     // void write_data();
     // void write_ndef_data();
+    void emulate_tag(); // @HiennNek
     void save_file();
     void clear_stream();
-    // void load_file();
+    void load_file();
 
     /////////////////////////////////////////////////////////////////////////////////////
     // File handlers
