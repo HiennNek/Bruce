@@ -47,7 +47,34 @@ int PN532::read(int cardBaudRate) {
         format_data_felica(idm, pmm, sys_code_res);
     }
 
-    displayInfo("Reading data blocks...");
+    if (printableUID.picc_type != "FeliCa" &&
+        (uid.sak == PICC_TYPE_MIFARE_MINI || uid.sak == PICC_TYPE_MIFARE_1K ||
+         uid.sak == PICC_TYPE_MIFARE_4K)) {
+        byte no_of_sectors = 0;
+        switch (uid.sak) {
+            case PICC_TYPE_MIFARE_MINI: no_of_sectors = 5; break;
+            case PICC_TYPE_MIFARE_1K: no_of_sectors = 16; break;
+            case PICC_TYPE_MIFARE_4K: no_of_sectors = 40; break;
+            default: break;
+        }
+        displayInfo("Don't move...Cracking card...");
+        for (byte sector = 0; sector < no_of_sectors; ++sector) {
+            byte firstBlock;
+            if (sector < 32) firstBlock = sector * 4;
+            else firstBlock = 128 + (sector - 32) * 16;
+            int authResult = authenticate_mifare_classic(firstBlock);
+            progressHandler(sector + 1, no_of_sectors, "Authenticating...");
+            if (authResult == TAG_NOT_PRESENT) {
+                displayWarning("Card not present");
+                delay(300);
+                break;
+            } else if (authResult != SUCCESS) {
+                displayError("Sector " + String(sector) + " authentication failed.");
+            }
+        }
+    } else {
+        displayInfo("Reading data blocks...");
+    }
     pageReadStatus = read_data_blocks();
     pageReadSuccess = pageReadStatus == SUCCESS;
     return SUCCESS;
