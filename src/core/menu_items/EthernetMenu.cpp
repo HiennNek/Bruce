@@ -44,7 +44,8 @@ void EthernetMenu::optionsMenu() {
 
 void EthernetMenu::drawIconImg() {
     drawImg(
-        *bruceConfig.themeFS(), bruceConfig.getThemeItemImg(bruceConfig.theme.paths.rfid), 0, imgCenterY, true
+        //*bruceConfig.themeFS(), bruceConfig.getThemeItemImg(bruceConfig.theme.paths.rfid), 0, imgCenterY, true
+        *bruceConfig.themeFS(), bruceConfig.getThemeItemImg(bruceConfig.theme.paths.ethernet), 0, imgCenterY, true
     );
 }
 void EthernetMenu::drawIcon(float scale) {
