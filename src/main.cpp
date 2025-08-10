@@ -214,7 +214,9 @@ void begin_tft() {
  **  Function: boot_screen
  **  Draw boot screen
  *********************************************************************/
-void boot_screen() {
+
+/*
+ void boot_screen() {
     tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
     tft.setTextSize(FM);
     tft.drawPixel(0, 0, bruceConfig.bgColor);
@@ -226,23 +228,53 @@ void boot_screen() {
         "PREDATORY FIRMWARE", tftWidth / 2, tftHeight + 2, 1
     ); // will draw outside the screen on non touch devices
 }
+*/
 
 /*********************************************************************
  **  Function: boot_screen_anim
  **  Draw boot screen
  *********************************************************************/
 void boot_screen_anim() {
-    boot_screen();
     int i = millis();
     // checks for boot.jpg in SD and LittleFS for customization
     int boot_img = 0;
     bool drawn = false;
     if (sdcardMounted) {
-        if (SD.exists("/boot.jpg")) boot_img = 1;
-        else if (SD.exists("/boot.gif")) boot_img = 3;
+        // Check for multiple GIF files on SD
+        bool hasDefaultGif = SD.exists("/boot.gif");
+        bool hasGif1 = SD.exists("/boot1.gif");
+        bool hasGif2 = SD.exists("/boot2.gif");
+
+        if (hasDefaultGif || hasGif1 || hasGif2) {
+            // Count available GIFs
+            int numGifs = hasDefaultGif + hasGif1 + hasGif2;
+            // Select random GIF (3-5 to indicate SD GIFs)
+            int gifChoice = random(0, numGifs);
+            boot_img = 3;                                // Default boot.gif
+            if (gifChoice == 1 && hasGif1) boot_img = 6; // boot1.gif
+            if (gifChoice == 2 && hasGif2) boot_img = 7; // boot2.gif
+        } else if (SD.exists("/boot.jpg")) {
+            boot_img = 1;
+        }
     }
-    if (boot_img == 0 && LittleFS.exists("/boot.jpg")) boot_img = 2;
-    else if (boot_img == 0 && LittleFS.exists("/boot.gif")) boot_img = 4;
+    if (boot_img == 0) {
+        // Check for multiple GIF files on LittleFS
+        bool hasDefaultGif = LittleFS.exists("/boot.gif");
+        bool hasGif1 = LittleFS.exists("/boot1.gif");
+        bool hasGif2 = LittleFS.exists("/boot2.gif");
+
+        if (hasDefaultGif || hasGif1 || hasGif2) {
+            // Count available GIFs
+            int numGifs = hasDefaultGif + hasGif1 + hasGif2;
+            // Select random GIF (4-8 to indicate LittleFS GIFs)
+            int gifChoice = random(0, numGifs);
+            boot_img = 4;                                // Default boot.gif
+            if (gifChoice == 1 && hasGif1) boot_img = 8; // boot1.gif
+            if (gifChoice == 2 && hasGif2) boot_img = 9; // boot2.gif
+        } else if (LittleFS.exists("/boot.jpg")) {
+            boot_img = 2;
+        }
+    }
     if (bruceConfig.theme.boot_img) boot_img = 5; // override others
 
     tft.drawPixel(0, 0, 0);       // Forces back communication with TFT, to avoid ghosting
@@ -273,6 +305,18 @@ void boot_screen_anim() {
                     Serial.println("Image from SD");
                 } else if (boot_img == 4) {
                     drawImg(LittleFS, "/boot.gif", 0, 0, true, 3600);
+                    Serial.println("Image from LittleFS");
+                } else if (boot_img == 6) {
+                    drawImg(SD, "/boot1.gif", 0, 0, true, 3600);
+                    Serial.println("Image from SD");
+                } else if (boot_img == 7) {
+                    drawImg(SD, "/boot2.gif", 0, 0, true, 3600);
+                    Serial.println("Image from SD");
+                } else if (boot_img == 8) {
+                    drawImg(LittleFS, "/boot1.gif", 0, 0, true, 3600);
+                    Serial.println("Image from LittleFS");
+                } else if (boot_img == 9) {
+                    drawImg(LittleFS, "/boot2.gif", 0, 0, true, 3600);
                     Serial.println("Image from LittleFS");
                 }
                 tft.drawPixel(0, 0, 0); // Forces back communication with TFT, to avoid ghosting
@@ -393,13 +437,12 @@ void setup() {
     bruceConfig.bright = 100; // theres is no value yet
     bruceConfig.rotation = ROTATION;
     setup_gpio();
+    setCpuFrequencyMhz(240);
 #if defined(HAS_SCREEN)
     tft.init();
     tft.setRotation(bruceConfig.rotation);
     tft.fillScreen(TFT_BLACK);
-    // bruceConfig is not read yet.. just to show something on screen due to long boot time
-    tft.setTextColor(TFT_PURPLE, TFT_BLACK);
-    tft.drawCentreString("Booting", tft.width() / 2, tft.height() / 2, 1);
+
 #else
     tft.begin();
 #endif
@@ -475,7 +518,7 @@ void loop() {
         previousMillis = millis(); // ensure that will not dim screen when get back to menu
     }
 #endif
-    tft.fillScreen(bruceConfig.bgColor);
+    // tft.fillScreen(bruceConfig.bgColor);
 
     mainMenu.begin();
     delay(1);
