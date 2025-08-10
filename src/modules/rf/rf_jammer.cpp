@@ -40,7 +40,7 @@ void RFJammer::run_full_jammer() {
     int tmr0 = millis();                 // control total jammer time;
 
     while (sendRF) {
-        if (check(EscPress) || (millis() - tmr0 > 20000)) {
+        if (check(EscPress)) {
             sendRF = false;
             returnToMenu = true;
             break;
@@ -55,7 +55,7 @@ void RFJammer::run_itmt_jammer() {
         for (int sequence = 1; sequence < 50; sequence++) {
             for (int duration = 1; duration <= 3; duration++) {
                 // Moved Escape check into this loop to check every cycle
-                if (check(EscPress) || (millis() - tmr0) > 20000) {
+                if (check(EscPress)) {
                     sendRF = false;
                     returnToMenu = true;
                     break;
